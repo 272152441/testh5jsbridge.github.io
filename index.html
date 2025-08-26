@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSBridge 测试界面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .button-list {
+            padding: 20px;
+        }
+        .button-item {
+            margin-bottom: 15px;
+        }
+        .button-item:last-child {
+            margin-bottom: 0;
+        }
+        .btn {
+            width: 100%;
+            padding: 15px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+        }
+        .btn-warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .icon {
+            font-size: 18px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+            display: none;
+        }
+        .result.show {
+            display: block;
+        }
+        .result-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+        .result-content {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            color: #6c757d;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>JSBridge 测试</h1>
+        </div>
+        <div class="button-list">
+            <div class="button-item">
+                <button class="btn btn-primary" onclick="handleRequireAppPermission()">
+                    <span>请求应用权限</span>
+                    <span class="icon">🔐</span>
+                </button>
+            </div>
+            <div class="button-item">
+                <button class="btn btn-success" onclick="handleGetAppPermission()">
+                    <span>获取应用权限</span>
+                    <span class="icon">📋</span>
+                </button>
+            </div>
+            <div class="button-item">
+                <button class="btn btn-warning" onclick="handleOpenSetting()">
+                    <span>打开设置页面</span>
+                    <span class="icon">⚙️</span>
+                </button>
+            </div>
+        </div>
+        <div id="result" class="result">
+            <div class="result-title">执行结果:</div>
+            <div id="result-content" class="result-content"></div>
+        </div>
+    </div>
+
+    <script>
+        function setupWebViewJavascriptBridge(callback) {
+            var bridge = window.WebViewJavascriptBridge || window.WKWebViewJavascriptBridge;
+            if (bridge) {
+                return callback(bridge);
+            }
+            var callbacks = window.WVJBCallbacks || window.WKWVJBCallbacks;
+            if (callbacks) {
+                return callbacks.push(callback);
+            }
+            window.WVJBCallbacks = window.WKWVJBCallbacks = [callback];
+            if (window.WKWebViewJavascriptBridge) {
+                //for https://github.com/Lision/WKWebViewJavascriptBridge
+                window.webkit.messageHandlers.iOS_Native_InjectJavascript.postMessage(null);
+            } else {
+                //for https://github.com/marcuswestin/WebViewJavascriptBridge
+                var WVJBIframe = document.createElement('iframe');
+                WVJBIframe.style.display = 'none';
+                WVJBIframe.src = 'https://__bridge_loaded__';
+                document.documentElement.appendChild(WVJBIframe);
+                setTimeout(function () {
+                    document.documentElement.removeChild(WVJBIframe)
+                }, 0);
+            }
+        }
+
+        function isWebView() {
+            // 简单的WebView检测
+            return window.WebViewJavascriptBridge || window.WKWebViewJavascriptBridge || 
+                   navigator.userAgent.includes('WebView') || 
+                   navigator.userAgent.includes('wv');
+        }
+
+        const callhandler = (data, callback) => {
+            if (!isWebView()) {
+                showResult('错误: 非APP内运行');
+                return Promise.reject('非APP内运行');
+            }
+            setupWebViewJavascriptBridge(function (bridge) {
+                bridge.callHandler('default', JSON.stringify(data), callback);
+            });
+        }
+
+        function showResult(content) {
+            const resultDiv = document.getElementById('result');
+            const resultContent = document.getElementById('result-content');
+            resultContent.textContent = typeof content === 'object' ? JSON.stringify(content, null, 2) : content;
+            resultDiv.classList.add('show');
+        }
+
+        // 请求应用权限
+        function handleRequireAppPermission() {
+            callhandler(
+                {
+                    handler: 'requireAppPermission',
+                    params: {
+                        permissions: ['camera', 'location', 'storage'] // 示例权限
+                    }
+                },
+                (data) => {
+                    showResult('requireAppPermission 结果: ' + JSON.stringify(data, null, 2));
+                }
+            );
+        }
+
+        // 获取应用权限状态
+        function handleGetAppPermission() {
+            callhandler(
+                {
+                    handler: 'getAppPermission',
+                    params: {
+                        permissions: ['camera', 'location', 'storage'] // 示例权限
+                    }
+                },
+                (data) => {
+                    showResult('getAppPermission 结果: ' + JSON.stringify(data, null, 2));
+                }
+            );
+        }
+
+        // 打开设置页面
+        function handleOpenSetting() {
+            callhandler(
+                {
+                    handler: 'openSetting',
+                    params: {
+                        type: 'permission' // 可以指定打开设置的具体页面
+                    }
+                },
+                (data) => {
+                    showResult('openSetting 结果: ' + JSON.stringify(data, null, 2));
+                }
+            );
+        }
+
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('JSBridge 测试页面已加载');
+            if (!isWebView()) {
+                showResult('提示: 当前不在APP环境中，JSBridge功能无法正常使用');
+            }
+        });
+    </script>
+</body>
+</html>
